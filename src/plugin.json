@@ -1,0 +1,38 @@
+{
+  "type": "datasource",
+  "name": "sendgrid-plugin",
+  "id": "ken-sendgrid-plugin",
+  "metrics": true,
+  "backend": true,
+  "alerting": true,
+  "executable": "gpx_sendgrid-plugin",
+  "info": {
+    "description": "Sendgrid stats",
+    "author": {
+      "name": "Ken Faulkner",
+      "url": ""
+    },
+    "keywords": [],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Website",
+        "url": "https://github.com/grafana/simple-datasource-backend"
+      },
+      {
+        "name": "License",
+        "url": "https://github.com/grafana/simple-datasource-backend/blob/master/LICENSE"
+      }
+    ],
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "dependencies": {
+    "grafanaVersion": "7.x.x",
+    "plugins": []
+  }
+}
