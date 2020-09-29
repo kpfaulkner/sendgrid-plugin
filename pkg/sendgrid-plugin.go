@@ -1,20 +1,18 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-  "fmt"
-  "math/rand"
-	"net/http"
-	"os"
-	"time"
+  "context"
+  "encoding/json"
+  "net/http"
+  "os"
+  "time"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/sendgrid/sendgrid-go"
+  "github.com/grafana/grafana-plugin-sdk-go/backend"
+  "github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
+  "github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+  "github.com/grafana/grafana-plugin-sdk-go/backend/log"
+  "github.com/grafana/grafana-plugin-sdk-go/data"
+  "github.com/sendgrid/sendgrid-go"
 )
 
 type SendgridStats []struct {
@@ -93,8 +91,6 @@ type SendgridDataSource struct {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (td *SendgridDataSource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	log.DefaultLogger.Info("QueryData", "request", req)
-
 	configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
 	var config SendgridPluginConfig
 	err := json.Unmarshal(configBytes, &config)
@@ -102,8 +98,6 @@ func (td *SendgridDataSource) QueryData(ctx context.Context, req *backend.QueryD
 		return nil, err
 	}
 	td.sendgridApiKey = config.SendgridAPIKey
-
-	log.DefaultLogger.Info("SG API KEY", "request", td.sendgridApiKey)
 
 	// create response struct
 	response := backend.NewQueryDataResponse()
@@ -149,16 +143,9 @@ func (td *SendgridDataSource) querySendGrid(fromDate time.Time, toDate time.Time
 }
 
 func addField( fields []*data.Field, name string, dataPoints []int64) []*data.Field {
-  vv := fmt.Sprintf("1 field length %d", len(fields))
-  log.DefaultLogger.Info(vv)
-
   fields = append(fields,
     data.NewField(name, nil, dataPoints),
   )
-
-  vv = fmt.Sprintf("2 field length %d", len(fields))
-  log.DefaultLogger.Info(vv)
-
   return fields
 }
 
@@ -267,13 +254,26 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 // a datasource is working as expected.
 func (td *SendgridDataSource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 
-	var status = backend.HealthStatusOk
-	var message = "Data source is working"
+  var status = backend.HealthStatusOk
+  var message = "Data source is working"
 
-	if rand.Int()%2 == 0 {
-		status = backend.HealthStatusError
-		message = "randomized error"
-	}
+  configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
+  var config SendgridPluginConfig
+  err := json.Unmarshal(configBytes, &config)
+  if err != nil {
+    status = backend.HealthStatusError
+    message = "Unable to contact Sendgrid"
+  }
+
+  td.sendgridApiKey = config.SendgridAPIKey
+	from := time.Now().UTC().Add(-24*time.Hour)
+  to := time.Now().UTC()
+
+  _, err = td.querySendGrid(from, to)
+  if err != nil {
+    status = backend.HealthStatusError
+    message = "Unable to contact Sendgrid"
+  }
 
 	return &backend.CheckHealthResult{
 		Status:  status,
