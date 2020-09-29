@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"math/rand"
+  "fmt"
+  "math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -53,7 +53,7 @@ type SendgridQuery struct {
 }
 
 type SendgridPluginConfig struct {
-  SendgridAPIKey string `json:"sendgridApiKey"`
+	SendgridAPIKey string `json:"sendgridApiKey"`
 }
 
 // newSendgridDataSource returns datasource.ServeOpts.
@@ -95,17 +95,17 @@ type SendgridDataSource struct {
 func (td *SendgridDataSource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	log.DefaultLogger.Info("QueryData", "request", req)
 
-  configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
-  var config SendgridPluginConfig
-  err := json.Unmarshal(configBytes, &config)
-  if err != nil {
-    return nil, err
-  }
-  td.sendgridApiKey = config.SendgridAPIKey
+	configBytes, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
+	var config SendgridPluginConfig
+	err := json.Unmarshal(configBytes, &config)
+	if err != nil {
+		return nil, err
+	}
+	td.sendgridApiKey = config.SendgridAPIKey
 
-  log.DefaultLogger.Info("SG API KEY", "request", td.sendgridApiKey)
+	log.DefaultLogger.Info("SG API KEY", "request", td.sendgridApiKey)
 
-  // create response struct
+	// create response struct
 	response := backend.NewQueryDataResponse()
 
 	// loop over queries and execute them individually.
@@ -125,6 +125,41 @@ func (td *SendgridDataSource) QueryData(ctx context.Context, req *backend.QueryD
 
 type queryModel struct {
 	Format string `json:"format"`
+}
+
+func (td *SendgridDataSource) querySendGrid(fromDate time.Time, toDate time.Time) (*SendgridStats, error) {
+	request := sendgrid.GetRequest(td.sendgridApiKey, "/v3/stats", td.host)
+	request.Method = "GET"
+	queryParams := make(map[string]string)
+	queryParams["aggregated_by"] = "day"
+	queryParams["limit"] = "1"
+	queryParams["start_date"] = fromDate.UTC().Format("2006-01-02")
+	queryParams["end_date"] = toDate.UTC().Format("2006-01-02")
+	queryParams["offset"] = "1"
+	request.QueryParams = queryParams
+	resp, err := sendgrid.API(request)
+	if err != nil {
+		log.DefaultLogger.Error("Cannot query sendgrid : %s", err.Error())
+		return nil, err
+	}
+
+	var sgStats SendgridStats
+	err = json.Unmarshal([]byte(resp.Body), &sgStats)
+	return &sgStats, err
+}
+
+func addField( fields []*data.Field, name string, dataPoints []int64) []*data.Field {
+  vv := fmt.Sprintf("1 field length %d", len(fields))
+  log.DefaultLogger.Info(vv)
+
+  fields = append(fields,
+    data.NewField(name, nil, dataPoints),
+  )
+
+  vv = fmt.Sprintf("2 field length %d", len(fields))
+  log.DefaultLogger.Info(vv)
+
+  return fields
 }
 
 func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery) (*backend.DataResponse, error) {
@@ -150,31 +185,10 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 		log.DefaultLogger.Warn("format is empty. defaulting to time series")
 	}
 
-	request := sendgrid.GetRequest(td.sendgridApiKey, "/v3/stats", td.host)
-	request.Method = "GET"
-	queryParams := make(map[string]string)
-	queryParams["aggregated_by"] = "day"
-	queryParams["limit"] = "1"
-	queryParams["start_date"] = query.TimeRange.From.UTC().Format("2006-01-02")
-	queryParams["end_date"] = query.TimeRange.To.UTC().Add(-24*time.Hour).Format("2006-01-02")
-	queryParams["offset"] = "1"
-	request.QueryParams = queryParams
-	resp, err := sendgrid.API(request)
+	sgStats, err := td.querySendGrid(query.TimeRange.From, query.TimeRange.To)
 	if err != nil {
-		log.DefaultLogger.Error("Cannot query sendgrid : %s", err.Error())
 		return nil, err
 	}
-
-  vv := fmt.Sprintf("SG REQ %v", request)
-  log.DefaultLogger.Info(vv)
-
-	var sgStats SendgridStats
-	_ = json.Unmarshal([]byte(resp.Body), &sgStats)
-
-	fmt.Printf("stats %v\n", sgStats)
-
-  vv = fmt.Sprintf("SG STATS %v", sgStats)
-  log.DefaultLogger.Info(vv)
 
 	// create data frame response
 	frame := data.NewFrame("response")
@@ -198,94 +212,53 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 	unsubscribeDrops := []int64{}
 	unsubscribes := []int64{}
 
-	//query.
-	for _, res := range sgStats {
+	// go through
+	for _, res := range *sgStats {
 		t, _ := time.Parse("2006-01-02", res.Date)
 		times = append(times, t)
 
-    requests = append(requests, int64(res.Stats[0].Metrics.Requests))
+		requests = append(requests, int64(res.Stats[0].Metrics.Requests))
 		blocks = append(blocks, int64(res.Stats[0].Metrics.Blocks))
-    bounceDrops = append(bounceDrops, int64(res.Stats[0].Metrics.BounceDrops))
-    bounces = append(bounces, int64(res.Stats[0].Metrics.Bounces))
-    clicks = append(clicks, int64(res.Stats[0].Metrics.Clicks))
-    deferred = append(deferred, int64(res.Stats[0].Metrics.Deferred))
-    delivered = append(delivered, int64(res.Stats[0].Metrics.Delivered))
-    invalidEmails = append(invalidEmails, int64(res.Stats[0].Metrics.InvalidEmails))
-    opens = append(opens, int64(res.Stats[0].Metrics.Opens))
-    processed = append(processed, int64(res.Stats[0].Metrics.Processed))
-
-    spamReportDrops = append(spamReportDrops, int64(res.Stats[0].Metrics.SpamReportDrops))
-    spamReports = append(spamReports, int64(res.Stats[0].Metrics.SpamReports))
-    uniqueClicks = append(uniqueClicks, int64(res.Stats[0].Metrics.UniqueClicks))
-    uniqueOpens = append(uniqueOpens, int64(res.Stats[0].Metrics.UniqueOpens))
-    unsubscribeDrops = append(unsubscribeDrops, int64(res.Stats[0].Metrics.UnsubscribeDrops))
-    unsubscribes = append(unsubscribes, int64(res.Stats[0].Metrics.Unsubscribes))
+		bounceDrops = append(bounceDrops, int64(res.Stats[0].Metrics.BounceDrops))
+		bounces = append(bounces, int64(res.Stats[0].Metrics.Bounces))
+		clicks = append(clicks, int64(res.Stats[0].Metrics.Clicks))
+		deferred = append(deferred, int64(res.Stats[0].Metrics.Deferred))
+		delivered = append(delivered, int64(res.Stats[0].Metrics.Delivered))
+		invalidEmails = append(invalidEmails, int64(res.Stats[0].Metrics.InvalidEmails))
+		opens = append(opens, int64(res.Stats[0].Metrics.Opens))
+		processed = append(processed, int64(res.Stats[0].Metrics.Processed))
+		spamReportDrops = append(spamReportDrops, int64(res.Stats[0].Metrics.SpamReportDrops))
+		spamReports = append(spamReports, int64(res.Stats[0].Metrics.SpamReports))
+		uniqueClicks = append(uniqueClicks, int64(res.Stats[0].Metrics.UniqueClicks))
+		uniqueOpens = append(uniqueOpens, int64(res.Stats[0].Metrics.UniqueOpens))
+		unsubscribeDrops = append(unsubscribeDrops, int64(res.Stats[0].Metrics.UnsubscribeDrops))
+		unsubscribes = append(unsubscribes, int64(res.Stats[0].Metrics.Unsubscribes))
 	}
 
-	// add the time dimension
 	frame.Fields = append(frame.Fields,
 		data.NewField("time", nil, times),
 	)
-  frame.Fields = append(frame.Fields,
-    data.NewField("processed", nil,processed),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("opens", nil,opens),
-  )
 
-	frame.Fields = append(frame.Fields,
-		data.NewField("bounceDrops", nil,bounceDrops),
-	)
-
-  frame.Fields = append(frame.Fields,
-    data.NewField("bounces", nil,bounces),
-  )
-
-  frame.Fields = append(frame.Fields,
-    data.NewField("clicks", nil,clicks),
-  )
-
-  frame.Fields = append(frame.Fields,
-    data.NewField("deferred", nil,deferred),
-  )
-
-  frame.Fields = append(frame.Fields,
-    data.NewField("delivered", nil,delivered),
-  )
-
-  frame.Fields = append(frame.Fields,
-    data.NewField("invalidEmails", nil,invalidEmails),
-  )
-
-  frame.Fields = append(frame.Fields,
-    data.NewField("requests", nil,requests),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("spamReportDrops", nil,spamReportDrops),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("spamReports", nil,spamReports),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("uniqueClicks", nil,uniqueClicks),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("uniqueOpens", nil,uniqueOpens),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("unsubscribeDrops", nil,unsubscribeDrops),
-  )
-  frame.Fields = append(frame.Fields,
-    data.NewField("unsubscribes", nil,unsubscribes),
-  )
+  frame.Fields = addField(frame.Fields, "processed", processed)
+	frame.Fields = addField(frame.Fields, "opens", opens)
+  frame.Fields = addField(frame.Fields, "bounceDrops", bounceDrops)
+  frame.Fields = addField(frame.Fields, "bounces", bounces)
+  frame.Fields = addField(frame.Fields, "blocks", blocks)
+  frame.Fields = addField(frame.Fields, "clicks", clicks)
+  frame.Fields = addField(frame.Fields, "deferred", deferred)
+  frame.Fields = addField(frame.Fields, "delivered", delivered)
+  frame.Fields = addField(frame.Fields, "invalidEmails", invalidEmails)
+  frame.Fields = addField(frame.Fields, "requests", requests)
+  frame.Fields = addField(frame.Fields, "spamReportDrops", spamReportDrops)
+  frame.Fields = addField(frame.Fields, "spamReports", spamReports)
+  frame.Fields = addField(frame.Fields, "uniqueClicks", uniqueClicks)
+  frame.Fields = addField(frame.Fields, "uniqueOpens", uniqueOpens)
+  frame.Fields = addField(frame.Fields, "unsubscribeDrops", unsubscribeDrops)
+  frame.Fields = addField(frame.Fields, "unsubscribes", unsubscribes)
 
 	// add the frames to the response
 	response.Frames = append(response.Frames, frame)
-
-  vv = fmt.Sprintf("RESP calc %v", response.Frames)
-  log.DefaultLogger.Info(vv)
-
-  return &response, nil
+	return &response, nil
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
@@ -293,11 +266,6 @@ func (td *SendgridDataSource) query(ctx context.Context, query backend.DataQuery
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (td *SendgridDataSource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-
-	rawJson, _ := req.PluginContext.DataSourceInstanceSettings.JSONData.MarshalJSON()
-
-	v := fmt.Sprintf("ZZZZZZZZZZZ heath config %s", string(rawJson))
-	log.DefaultLogger.Info(v)
 
 	var status = backend.HealthStatusOk
 	var message = "Data source is working"
@@ -318,11 +286,6 @@ type instanceSettings struct {
 }
 
 func newDataSourceInstance(setting backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-
-	log.DefaultLogger.Info("YYYYYYYYYYYYYYYYYYYYYYYYYYYYYY")
-	log.DefaultLogger.Info("settings", "settings", setting)
-
-	fmt.Printf("settings %v\n", setting)
 	return &instanceSettings{
 		httpClient: &http.Client{},
 	}, nil

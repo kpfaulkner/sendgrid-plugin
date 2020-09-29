@@ -1,6 +1,6 @@
 {
-  "name": "ken-sendgrid-plugin",
-  "version": "1.0.0",
+  "name": "kpfaulkner-sendgrid-plugin",
+  "version": "0.1.0",
   "description": "test",
   "scripts": {
     "build": "grafana-toolkit plugin:build",

@@ -1,7 +1,7 @@
 {
   "type": "datasource",
   "name": "sendgrid-plugin",
-  "id": "ken-sendgrid-plugin",
+  "id": "kpfaulkner-sendgrid-plugin",
   "metrics": true,
   "backend": true,
   "alerting": true,
