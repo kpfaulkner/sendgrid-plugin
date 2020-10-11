@@ -1,11 +1,9 @@
-module github.com/grafana/simple-datasource-backend
+module github.com/kpfaulkner/sendgrid-plugin
 
-go 1.14
+go 1.15
 
 require (
-	github.com/grafana/grafana-plugin-sdk-go v0.77.0
-	github.com/kpfaulkner/ddlog v0.0.0-20200812074524-dfac97f0f34c
-	github.com/magefile/mage v1.10.0 // indirect
+	github.com/grafana/grafana-plugin-sdk-go v0.78.0
 	github.com/sendgrid/rest v2.6.1+incompatible // indirect
-	github.com/sendgrid/sendgrid-go v3.6.3+incompatible
+	github.com/sendgrid/sendgrid-go v3.6.4+incompatible
 )
