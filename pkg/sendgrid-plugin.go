@@ -3,6 +3,7 @@ package main
 import (
   "context"
   "encoding/json"
+  "fmt"
   "net/http"
   "os"
   "time"
@@ -133,11 +134,13 @@ func (td *SendgridDataSource) querySendGrid(fromDate time.Time, toDate time.Time
 	request.QueryParams = queryParams
 	resp, err := sendgrid.API(request)
 	if err != nil {
-		log.DefaultLogger.Error("Cannot query sendgrid : %s", err.Error())
+		log.DefaultLogger.Error(fmt.Sprintf("Cannot query sendgrid : %s", err.Error()))
 		return nil, err
 	}
 
-	var sgStats SendgridStats
+  log.DefaultLogger.Error(fmt.Sprintf("sendgrid body is : %s", resp.Body))
+
+  var sgStats SendgridStats
 	err = json.Unmarshal([]byte(resp.Body), &sgStats)
 	return &sgStats, err
 }
@@ -261,6 +264,7 @@ func (td *SendgridDataSource) CheckHealth(ctx context.Context, req *backend.Chec
   var config SendgridPluginConfig
   err := json.Unmarshal(configBytes, &config)
   if err != nil {
+    log.DefaultLogger.Error(fmt.Sprintf("Cannot get healthcheck query : %s", err.Error()))
     status = backend.HealthStatusError
     message = "Unable to contact Sendgrid"
   }
@@ -271,6 +275,7 @@ func (td *SendgridDataSource) CheckHealth(ctx context.Context, req *backend.Chec
 
   _, err = td.querySendGrid(from, to)
   if err != nil {
+    log.DefaultLogger.Error(fmt.Sprintf("Cannot query sendgrid for healthcheck: %s", err.Error()))
     status = backend.HealthStatusError
     message = "Unable to contact Sendgrid"
   }
